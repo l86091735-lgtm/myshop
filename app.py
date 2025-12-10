@@ -13,11 +13,17 @@ PRODUCT_FILE = "products.csv"
 RANKING_FILE = "ranking.json"
 
 # -----------------------
-# 파일 로드 함수
+# 파일 로드 함수 (인코딩 안전 처리)
 # -----------------------
 @st.cache_data
 def load_products():
-    return pd.read_csv(PRODUCT_FILE)
+    try:
+        return pd.read_csv(PRODUCT_FILE, encoding="utf-8-sig")
+    except:
+        try:
+            return pd.read_csv(PRODUCT_FILE, encoding="cp949")
+        except:
+            return pd.read_csv(PRODUCT_FILE, encoding="euc-kr")
 
 def load_ranking():
     if not os.path.exists(RANKING_FILE):
@@ -36,9 +42,9 @@ def save_ranking(data):
 products_df = load_products()
 
 products = {
-    row["name"]: {
+    str(row["name"]): {
         "price": int(row["price"]),
-        "image": row["image_url"]
+        "image": str(row["image_url"])
     }
     for _, row in products_df.iterrows()
 }
@@ -123,7 +129,6 @@ def shopping_page():
 
     st.divider()
 
-    # 상품 목록
     st.subheader("상품 목록")
 
     for name, info in products.items():
@@ -163,7 +168,7 @@ def calculate_score():
 
     score = 0
     if remaining_money >= 0:
-        efficiency = int((used / st.session_state.budget) * 100)
+        efficiency = int((used / st.session_state.budget) * 100) if st.session_state.budget > 0 else 0
         score += efficiency * 10
 
     score += time_left * 2
@@ -202,8 +207,7 @@ def result_page():
 
     st.divider()
 
-    # 느낀점
-    st.session_state.reflection = st.text_area("느낀 점 작성")
+    st.session_state.reflection = st.text_area("느낀 점")
 
     if st.button("랭킹 저장"):
         ranking = load_ranking()
@@ -224,7 +228,7 @@ def result_page():
         for i, r in enumerate(ranking, 1):
             st.write(f"{i}. {r['name']} - {r['score']}점 ({r['difficulty']})")
     else:
-        st.write("랭킹 데이터가 없습니다.")
+        st.write("아직 랭킹이 없습니다.")
 
     if st.button("다시 시작"):
         st.session_state.page = "start"
