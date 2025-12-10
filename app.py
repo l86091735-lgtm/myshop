@@ -61,18 +61,18 @@ def start_page():
         index=0
     )
     
-    selected_budget = missions[selected_mission]
-    st.subheader(f"선택하신 미션의 예산은 **{selected_budget: 목표:5,d}원**입니다.")
-
-    st.markdown("---")
+  selected_mission = st.radio(
+        "미션 선택:",
+        list(missions.keys()),
+        index=0
+    )
     
-    if st.button("미션 시작하기", type="primary"):
-        st.session_state.budget = selected_budget
-        st.session_state.page = 'shopping'
-        # 쇼핑 화면으로 이동 시 초기화된 장바구니 상태로 시작
-        st.session_state.cart = {}
-        st.session_state.notes = ""
-        st.rerun()
+    selected_budget = missions[selected_mission]
+    
+    # 이 부분을 수정하세요!
+    st.subheader(f"선택하신 미션의 예산은 **{selected_budget:,d}원**입니다.") 
+    
+    st.markdown("---")
 
 def shopping_page():
     """
