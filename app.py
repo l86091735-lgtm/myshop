@@ -36,9 +36,52 @@ def save_ranking(data):
 products_df = load_products()
 
 products = {
-    row["name"]: {
-        "price": int(row["price"]),
-        "image": row["image_url"]
+PRODUCT_FILE = "products.csv"
+
+@st.cache_data
+def load_products():
+    try:
+        df = pd.read_csv(PRODUCT_FILE, encoding="utf-8")
+    except:
+        try:
+            df = pd.read_csv(PRODUCT_FILE, encoding="cp949")
+        except:
+            df = pd.read_csv(PRODUCT_FILE, encoding="euc-kr")
+
+    # 컬럼 이름 정리 (공백, 대소문자 제거)
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    return df
+
+products_df = load_products()
+
+# 컬럼 이름 자동 감지
+name_col = None
+price_col = None
+image_col = None
+
+for col in products_df.columns:
+    if "name" in col or "상품" in col:
+        name_col = col
+    if "price" in col or "가격" in col:
+        price_col = col
+    if "image" in col or "img" in col or "이미지" in col:
+        image_col = col
+
+# 필수 컬럼 체크
+if not name_col or not price_col:
+    st.error("CSV 파일에 상품명 또는 가격 컬럼이 없습니다.")
+    st.stop()
+
+# products 딕셔너리 생성
+products = {
+    row[name_col]: {
+        "price": int(row[price_col]),
+        "image": row[image_col] if image_col else ""
+    }
+    for _, row in products_df.iterrows()
+}
+
     }
     for _, row in products_df.iterrows()
 }
