@@ -2,26 +2,46 @@ import streamlit as st
 import time
 import json
 import os
+import pandas as pd
 
 # -----------------------
 # 기본 설정
 # -----------------------
-st.set_page_config(page_title="미션 쇼핑 앱 (랭킹 포함)", layout="centered")
+st.set_page_config(page_title="미션 쇼핑 앱", layout="centered")
 
+PRODUCT_FILE = "products.csv"
 RANKING_FILE = "ranking.json"
 
-# 랭킹 파일 초기화
-if not os.path.exists(RANKING_FILE):
-    with open(RANKING_FILE, "w", encoding="utf-8") as f:
-        json.dump([], f)
+# -----------------------
+# 파일 로드 함수
+# -----------------------
+@st.cache_data
+def load_products():
+    return pd.read_csv(PRODUCT_FILE)
 
 def load_ranking():
+    if not os.path.exists(RANKING_FILE):
+        with open(RANKING_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
     with open(RANKING_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_ranking(data):
     with open(RANKING_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
+# -----------------------
+# 상품 불러오기
+# -----------------------
+products_df = load_products()
+
+products = {
+    row["name"]: {
+        "price": int(row["price"]),
+        "image": row["image_url"]
+    }
+    for _, row in products_df.iterrows()
+}
 
 # -----------------------
 # 세션 상태
@@ -45,21 +65,10 @@ if "score" not in st.session_state:
 if "player_name" not in st.session_state:
     st.session_state.player_name = ""
 
-# 기본 상품
-if "items" not in st.session_state:
-    st.session_state.items = {
-        "연필": 1000,
-        "공책": 3000,
-        "지우개": 1500,
-        "필통": 5000,
-        "가방": 20000
-    }
-
-# 난이도 설정
 DIFFICULTY_SETTINGS = {
-    "쉬움": {"time": 180, "bonus": 1},
-    "보통": {"time": 120, "bonus": 2},
-    "어려움": {"time": 60, "bonus": 3}
+    "쉬움": {"time": 180, "bonus": 1, "budgets": [30000, 50000, 70000]},
+    "보통": {"time": 120, "bonus": 2, "budgets": [20000, 40000, 60000]},
+    "어려움": {"time": 60, "bonus": 3, "budgets": [10000, 20000, 30000]}
 }
 
 # -----------------------
@@ -68,16 +77,10 @@ DIFFICULTY_SETTINGS = {
 def start_page():
     st.title("🎯 미션 시작")
 
-    name = st.text_input("이름을 입력하세요")
+    name = st.text_input("이름 입력")
 
     difficulty = st.radio("난이도 선택", ["쉬움", "보통", "어려움"])
-
-    if difficulty == "쉬움":
-        budgets = [30000, 50000, 70000]
-    elif difficulty == "보통":
-        budgets = [20000, 40000, 60000]
-    else:
-        budgets = [10000, 20000, 30000]
+    budgets = DIFFICULTY_SETTINGS[difficulty]["budgets"]
 
     budget = st.radio("예산 선택", budgets, format_func=lambda x: f"{x:,}원")
 
@@ -97,13 +100,13 @@ def start_page():
 # 2. 쇼핑 화면
 # -----------------------
 def shopping_page():
-    st.title("🛒 쇼핑")
+    st.title("🛒 쇼핑 화면")
 
     elapsed = int(time.time() - st.session_state.start_time)
     remaining_time = st.session_state.time_limit - elapsed
 
     if remaining_time <= 0:
-        st.warning("⏰ 시간 초과!")
+        st.warning("⏰ 시간이 초과되었습니다!")
         st.session_state.page = "result"
         st.rerun()
 
@@ -112,7 +115,7 @@ def shopping_page():
     st.write(f"남은 시간: **{remaining_time}초**")
     st.write(f"예산: **{st.session_state.budget:,}원**")
 
-    total_price = sum(st.session_state.items[item] for item in st.session_state.cart)
+    total_price = sum(products[item]["price"] for item in st.session_state.cart)
     remaining_money = st.session_state.budget - total_price
 
     st.write(f"사용 금액: {total_price:,}원")
@@ -120,62 +123,51 @@ def shopping_page():
 
     st.divider()
 
-    # 상품 추가
-    st.subheader("➕ 상품 추가")
-    new_name = st.text_input("상품 이름")
-    new_price = st.number_input("상품 가격", min_value=0, step=500)
-
-    if st.button("상품 등록"):
-        if new_name and new_price > 0:
-            st.session_state.items[new_name] = new_price
-            st.success("상품이 추가됐습니다.")
-            st.rerun()
-
-    st.divider()
-
     # 상품 목록
     st.subheader("상품 목록")
-    for name, price in st.session_state.items.items():
-        col1, col2, col3 = st.columns([3, 2, 2])
-        col1.write(f"**{name}**")
-        col2.write(f"{price:,}원")
 
-        if col3.button(f"{name} 담기"):
-            if remaining_money - price < 0:
-                st.warning("❗ 예산 초과!")
-            else:
-                st.session_state.cart.append(name)
-            st.rerun()
+    for name, info in products.items():
+        col1, col2 = st.columns([2, 3])
+
+        with col1:
+            st.image(info["image"], use_container_width=True)
+
+        with col2:
+            st.write(f"**{name}**")
+            st.write(f"{info['price']:,}원")
+
+            if st.button(f"{name} 담기"):
+                if remaining_money - info["price"] < 0:
+                    st.warning("❗ 예산 초과!")
+                else:
+                    st.session_state.cart.append(name)
+                st.rerun()
 
     st.divider()
 
-    if st.button("구매 완료"):
+    if st.button("구매 완료 → 결과"):
         st.session_state.page = "result"
         st.rerun()
 
 # -----------------------
-# 점수 계산 함수
+# 점수 계산
 # -----------------------
 def calculate_score():
-    used = sum(st.session_state.items[item] for item in st.session_state.cart)
+    used = sum(products[item]["price"] for item in st.session_state.cart)
     remaining_money = st.session_state.budget - used
 
-    difficulty_bonus = DIFFICULTY_SETTINGS[st.session_state.difficulty]["bonus"]
     time_used = int(time.time() - st.session_state.start_time)
     time_left = max(st.session_state.time_limit - time_used, 0)
 
-    score = 0
+    bonus = DIFFICULTY_SETTINGS[st.session_state.difficulty]["bonus"]
 
-    # 예산 활용 점수
+    score = 0
     if remaining_money >= 0:
-        efficiency = int(((used / st.session_state.budget) * 100))
+        efficiency = int((used / st.session_state.budget) * 100)
         score += efficiency * 10
 
-    # 남은 시간 보너스
     score += time_left * 2
-
-    # 난이도 보너스
-    score *= difficulty_bonus
+    score *= bonus
 
     return score
 
@@ -183,68 +175,64 @@ def calculate_score():
 # 3. 결과 화면
 # -----------------------
 def result_page():
-    st.title("✅ 결과")
+    st.title("✅ 결과 화면")
 
-    total_price = sum(st.session_state.items[item] for item in st.session_state.cart)
+    total_price = sum(products[item]["price"] for item in st.session_state.cart)
     remaining_money = st.session_state.budget - total_price
 
-    st.subheader("📦 구매 내역")
+    st.subheader("📦 구매한 상품")
     if st.session_state.cart:
         for item in st.session_state.cart:
-            st.write(f"- {item} ({st.session_state.items[item]:,}원)")
+            st.write(f"- {item} ({products[item]['price']:,}원)")
     else:
-        st.write("구매 내역 없음")
+        st.write("구매한 상품이 없습니다.")
 
-    st.write(f"사용 금액: **{total_price:,}원**")
+    st.divider()
+
+    st.write(f"총 사용 금액: **{total_price:,}원**")
     st.write(f"남은 금액: **{remaining_money:,}원**")
 
-    # 점수 계산
     st.session_state.score = calculate_score()
     st.subheader(f"🏆 점수: {st.session_state.score}점")
 
     if remaining_money >= 0:
-        st.success("미션 성공!")
+        st.success("🎉 미션 성공!")
     else:
-        st.error("미션 실패!")
+        st.error("❌ 미션 실패!")
+
+    st.divider()
 
     # 느낀점
-    st.session_state.reflection = st.text_area("느낀 점", value=st.session_state.reflection)
+    st.session_state.reflection = st.text_area("느낀 점 작성")
 
-    # 랭킹 저장
-    if st.button("랭킹에 저장"):
+    if st.button("랭킹 저장"):
         ranking = load_ranking()
-
         ranking.append({
             "name": st.session_state.player_name,
             "score": st.session_state.score,
             "difficulty": st.session_state.difficulty
         })
-
-        # 점수 기준 내림차순 정렬
         ranking = sorted(ranking, key=lambda x: x["score"], reverse=True)[:10]
-
         save_ranking(ranking)
-        st.success("랭킹이 저장되었습니다.")
+        st.success("랭킹 저장 완료!")
 
     st.divider()
 
-    # 랭킹 표시
     st.subheader("🏅 TOP 10 랭킹")
     ranking = load_ranking()
-
     if ranking:
-        for i, r in enumerate(ranking, start=1):
+        for i, r in enumerate(ranking, 1):
             st.write(f"{i}. {r['name']} - {r['score']}점 ({r['difficulty']})")
     else:
-        st.write("아직 랭킹이 없습니다.")
+        st.write("랭킹 데이터가 없습니다.")
 
     if st.button("다시 시작"):
         st.session_state.page = "start"
         st.session_state.budget = 0
         st.session_state.cart = []
         st.session_state.reflection = ""
-        st.session_state.start_time = None
         st.session_state.score = 0
+        st.session_state.start_time = None
         st.rerun()
 
 # -----------------------
